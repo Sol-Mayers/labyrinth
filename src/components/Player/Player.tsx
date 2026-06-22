@@ -43,6 +43,9 @@ export default function FPSController({
   const sprintEnergyRef = useRef(10);
   const playerPosRef = useRef(new THREE.Vector3());
 
+  const bobTimeRef = useRef(0);
+  const bobOffsetRef = useRef(new THREE.Vector2(0, 0));
+
   const groundContactsRef = useRef(0);
   const groundedRef = useRef(false);
 
@@ -73,6 +76,11 @@ export default function FPSController({
       // тонкий сенсор под ногами
       groundSensorArgs: [0.22, 0.04, 0.22] as [number, number, number],
       groundSensorPosition: [0, -0.84, 0] as [number, number, number],
+
+      // Настройки покачивания
+      bobFrequency: 5,       // Частота шагов
+      bobAmountX: 0.03,       // Амплитуда влево-вправо
+      bobAmountY: 0.02,       // Амплитуда вверх-вниз
     }),
     [],
   );
@@ -172,13 +180,11 @@ export default function FPSController({
 
     const currentVel = body.linvel();
     const pos = body.translation();
-
     const grounded = groundedRef.current;
 
     camera.getWorldDirection(cameraForward);
     cameraForward.y = 0;
     cameraForward.normalize();
-
     cameraRight.crossVectors(cameraForward, camera.up).normalize();
 
     const xInput = Number(keys.current.right) - Number(keys.current.left);
@@ -192,78 +198,77 @@ export default function FPSController({
     const isMoving = moveDirection.lengthSq() > 0;
     if (moveDirection.lengthSq() > 1) moveDirection.normalize();
 
+    // --- ЛОГИКА КАЧАНИЯ ГОЛОВЫ ---
+    if (grounded && isMoving) {
+  const currentSpeed = new THREE.Vector3(currentVel.x, 0, currentVel.z).length();
+
+  // 1) Чуть быстрее на обычной ходьбе
+  // 2) Ограничиваем ускорение на быстром беге, чтобы не было "семенения"
+  const bobSpeed = THREE.MathUtils.clamp(
+    currentSpeed * settings.bobFrequency,
+    10.0,
+    22.0
+  );
+
+  bobTimeRef.current += delta * bobSpeed;
+
+  bobOffsetRef.current.x = Math.sin(bobTimeRef.current * 0.5) * settings.bobAmountX;
+  bobOffsetRef.current.y = Math.sin(bobTimeRef.current) * settings.bobAmountY;
+} else {
+  bobOffsetRef.current.x = THREE.MathUtils.lerp(bobOffsetRef.current.x, 0, delta * 5);
+  bobOffsetRef.current.y = THREE.MathUtils.lerp(bobOffsetRef.current.y, 0, delta * 5);
+}
+
+    // Состояние приседания
     if (grounded && isCrouchingRef.current !== keys.current.crouchPressed) {
       isCrouchingRef.current = keys.current.crouchPressed;
       setIsCrouched(keys.current.crouchPressed);
     }
 
-    // --- ЛОГИКА ПРОТИВ СКАЛЬЗЫВАНИЯ ---
+    // Гравитация и остановка (как в оригинале)
     if (grounded && !isMoving) {
-      // Если стоим на земле и не двигаемся:
-      // 1. Отключаем гравитацию для этого тела
       body.setGravityScale(0, true);
-      // 2. Полностью обнуляем вектор скорости, чтобы погасить инерцию скатывания
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     } else {
-      // Если в воздухе или идем:
-      // Возвращаем обычную гравитацию
       body.setGravityScale(1, true);
     }
-    // ---------------------------------
 
-    const canSprint =
-      grounded &&
-      !isCrouchingRef.current &&
-      keys.current.shiftPressed &&
-      sprintEnergyRef.current > 0 &&
-      isMoving;
-
+    const canSprint = grounded && !isCrouchingRef.current && keys.current.shiftPressed && sprintEnergyRef.current > 0 && isMoving;
     let baseSpeed = isCrouchingRef.current ? settings.crouchSpeed : settings.moveSpeed;
     if (isInsideHouse) baseSpeed *= 0.5;
-
     const speed = canSprint ? baseSpeed * settings.sprintMultiplier : baseSpeed;
-    const control = grounded ? 1 : settings.airControlMultiplier;
     
-    const desiredX = moveDirection.x * speed * control;
-    const desiredZ = moveDirection.z * speed * control;
-
-    const blend = grounded ? 1 : Math.min(1, delta * 4);
-    const nextX = THREE.MathUtils.lerp(currentVel.x, desiredX, blend);
-    const nextZ = THREE.MathUtils.lerp(currentVel.z, desiredZ, blend);
-
-    // Если мы на земле, мы уже управляем Y через GravityScale выше, 
-    // но для плавности прыжков или падений оставим стандартную логику:
+    const control = grounded ? 1 : settings.airControlMultiplier;
+    const nextX = THREE.MathUtils.lerp(currentVel.x, moveDirection.x * speed * control, grounded ? 1 : delta * 4);
+    const nextZ = THREE.MathUtils.lerp(currentVel.z, moveDirection.z * speed * control, grounded ? 1 : delta * 4);
     let nextY = currentVel.y;
-    if (grounded && !isMoving) {
-        nextY = 0;
-    }
+    if (grounded && !isMoving) nextY = 0;
 
+    // Энергия
     if (grounded) {
       if (canSprint) {
         sprintEnergyRef.current = Math.max(0, sprintEnergyRef.current - delta);
       } else {
-        sprintEnergyRef.current = Math.min(
-          settings.maxSprintEnergy,
-          sprintEnergyRef.current + delta * 0.5,
-        );
+        sprintEnergyRef.current = Math.min(settings.maxSprintEnergy, sprintEnergyRef.current + delta * 0.5);
       }
       onSprintEnergyChange?.(sprintEnergyRef.current);
     }
 
+    // Плавная высота камеры (приседание)
     const targetH = isCrouched ? settings.crouchCameraHeight : settings.standCameraHeight;
-    visualCameraY.current = THREE.MathUtils.lerp(
-      visualCameraY.current,
-      targetH,
-      delta * settings.crouchTransitionSpeed,
-    );
+    visualCameraY.current = THREE.MathUtils.lerp(visualCameraY.current, targetH, delta * settings.crouchTransitionSpeed);
 
-    camera.position.set(pos.x, pos.y + visualCameraY.current, pos.z);
+    // --- ПРИМЕНЕНИЕ ПОЗИЦИИ КАМЕРЫ С УЧЕТОМ КАЧАНИЯ ---
+    // Добавляем bobOffset к базовой позиции
+    camera.position.set(
+        pos.x + cameraRight.x * bobOffsetRef.current.x, 
+        pos.y + visualCameraY.current + bobOffsetRef.current.y, 
+        pos.z + cameraRight.z * bobOffsetRef.current.x
+    );
     
-    // Применяем скорость только если мы не в состоянии "заморозки" на склоне
-    if (grounded && !isMoving) {
-        // Тело уже остановлено через setLinvel(0) выше
-    } else {
-        body.setLinvel({ x: nextX, y: nextY, z: nextZ }, true);
+    // Физика
+    if (!(grounded && !isMoving)) {
+      body.setLinvel({ x: nextX, y: nextY, z: nextZ }, true);
     }
 
     if (onPositionChange) {
