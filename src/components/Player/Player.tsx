@@ -49,6 +49,65 @@ export default function FPSController({
   const groundContactsRef = useRef(0);
   const groundedRef = useRef(false);
 
+  // --- ЗВУКОВАЯ ЛОГИКА ---
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const audioRefs = useRef<(THREE.Audio | null)[]>([]);
+  const audioListenerRef = useRef<THREE.AudioListener | null>(null);
+  const audioLoaderRef = useRef(new THREE.AudioLoader());
+  const lastStepTimeRef = useRef(0);
+  const lastFootstepPhaseRef = useRef<"none" | "left" | "right">("none");
+
+  // Активируем звук по первому клику (требование браузеров)
+  useEffect(() => {
+    const enable = () => setSoundEnabled(true);
+    window.addEventListener("click", enable, { once: true });
+    return () => window.removeEventListener("click", enable);
+  }, []);
+
+  useEffect(() => {
+    const listener = new THREE.AudioListener();
+    camera.add(listener);
+    audioListenerRef.current = listener;
+
+    const loader = audioLoaderRef.current;
+
+    Array.from({ length: 8 }).forEach((_, i) => {
+      const sound = new THREE.Audio(listener);
+      loader.load(`/sound/shag-${i + 1}.wav`, (buffer) => {
+        sound.setBuffer(buffer);
+        sound.setLoop(false);
+        sound.setVolume(0.4);
+      });
+      audioRefs.current[i] = sound;
+    });
+
+    return () => {
+      camera.remove(listener);
+      audioRefs.current.forEach((sound) => {
+        if (sound?.isPlaying) sound.stop();
+      });
+      audioRefs.current = [];
+      audioListenerRef.current = null;
+    };
+  }, [camera]);
+
+  // Функция для проигрывания случайного шага
+  const playStepSound = () => {
+    const availableSounds = audioRefs.current.filter(
+      (ref) => ref && ref.buffer && !ref.isPlaying
+    );
+    if (availableSounds.length === 0) return;
+
+    const randomIdx = Math.floor(Math.random() * availableSounds.length);
+    const sound = availableSounds[randomIdx];
+
+    if (sound) {
+      // Небольшая вариация высоты звука для еще большей реалистичности
+      sound.setPlaybackRate(0.9 + Math.random() * 0.2);
+      sound.play();
+    }
+  };
+
   const keys = useRef({
     forward: false,
     backward: false,
@@ -78,11 +137,11 @@ export default function FPSController({
       groundSensorPosition: [0, -0.84, 0] as [number, number, number],
 
       // Настройки покачивания
-      bobFrequency: 5,       // Частота шагов
-      bobAmountX: 0.03,       // Амплитуда влево-вправо
-      bobAmountY: 0.02,       // Амплитуда вверх-вниз
+      bobFrequency: 5, // Частота шагов
+      bobAmountX: 0.03, // Амплитуда влево-вправо
+      bobAmountY: 0.02, // Амплитуда вверх-вниз
     }),
-    [],
+    []
   );
 
   const spawnPosition = useMemo(() => {
@@ -174,7 +233,7 @@ export default function FPSController({
     };
   }, []);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const body = rigidRef.current;
     if (!body) return;
 
@@ -195,29 +254,62 @@ export default function FPSController({
       .addScaledVector(cameraForward, zInput)
       .addScaledVector(cameraRight, xInput);
 
-    const isMoving = moveDirection.lengthSq() > 0;
+    const isMoving = moveDirection.lengthSq() > 0.01;
     if (moveDirection.lengthSq() > 1) moveDirection.normalize();
 
     // --- ЛОГИКА КАЧАНИЯ ГОЛОВЫ ---
     if (grounded && isMoving) {
-  const currentSpeed = new THREE.Vector3(currentVel.x, 0, currentVel.z).length();
+      const currentSpeed = new THREE.Vector3(
+        currentVel.x,
+        0,
+        currentVel.z
+      ).length();
 
-  // 1) Чуть быстрее на обычной ходьбе
-  // 2) Ограничиваем ускорение на быстром беге, чтобы не было "семенения"
-  const bobSpeed = THREE.MathUtils.clamp(
-    currentSpeed * settings.bobFrequency,
-    10.0,
-    22.0
-  );
+      const speedMultiplier = isInsideHouse ? 1.7 : 1.0;
 
-  bobTimeRef.current += delta * bobSpeed;
+      const bobSpeed = THREE.MathUtils.clamp(
+        currentSpeed * settings.bobFrequency * speedMultiplier,
+        10.0,
+        30.0
+      );
 
-  bobOffsetRef.current.x = Math.sin(bobTimeRef.current * 0.5) * settings.bobAmountX;
-  bobOffsetRef.current.y = Math.sin(bobTimeRef.current) * settings.bobAmountY;
-} else {
-  bobOffsetRef.current.x = THREE.MathUtils.lerp(bobOffsetRef.current.x, 0, delta * 5);
-  bobOffsetRef.current.y = THREE.MathUtils.lerp(bobOffsetRef.current.y, 0, delta * 5);
-}
+      bobTimeRef.current += delta * bobSpeed;
+
+      const bobX = Math.sin(bobTimeRef.current * 0.5) * settings.bobAmountX;
+      const bobY = Math.sin(bobTimeRef.current) * settings.bobAmountY;
+
+      bobOffsetRef.current.x = bobX;
+      bobOffsetRef.current.y = bobY;
+
+      const isBottom = bobY < -settings.bobAmountY * 0.75;
+      const isLeft = bobX < 0;
+      const isRight = bobX > 0;
+
+      let currentPhase: "none" | "left" | "right" = "none";
+      if (isBottom && isLeft) currentPhase = "left";
+      if (isBottom && isRight) currentPhase = "right";
+
+      if (currentPhase !== "none" && currentPhase !== lastFootstepPhaseRef.current) {
+        if (soundEnabled) playStepSound();
+        lastFootstepPhaseRef.current = currentPhase;
+      }
+
+      if (!isBottom) {
+        lastFootstepPhaseRef.current = "none";
+      }
+    } else {
+      bobOffsetRef.current.x = THREE.MathUtils.lerp(
+        bobOffsetRef.current.x,
+        0,
+        delta * 5
+      );
+      bobOffsetRef.current.y = THREE.MathUtils.lerp(
+        bobOffsetRef.current.y,
+        0,
+        delta * 5
+      );
+      lastFootstepPhaseRef.current = "none";
+    }
 
     // Состояние приседания
     if (grounded && isCrouchingRef.current !== keys.current.crouchPressed) {
@@ -225,7 +317,7 @@ export default function FPSController({
       setIsCrouched(keys.current.crouchPressed);
     }
 
-    // Гравитация и остановка (как в оригинале)
+    // Гравитация и остановка
     if (grounded && !isMoving) {
       body.setGravityScale(0, true);
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);
@@ -233,14 +325,29 @@ export default function FPSController({
       body.setGravityScale(1, true);
     }
 
-    const canSprint = grounded && !isCrouchingRef.current && keys.current.shiftPressed && sprintEnergyRef.current > 0 && isMoving;
-    let baseSpeed = isCrouchingRef.current ? settings.crouchSpeed : settings.moveSpeed;
-    if (isInsideHouse) baseSpeed *= 0.5;
+    const canSprint =
+      grounded &&
+      !isCrouchingRef.current &&
+      keys.current.shiftPressed &&
+      sprintEnergyRef.current > 0 &&
+      isMoving;
+    let baseSpeed = isCrouchingRef.current
+      ? settings.crouchSpeed
+      : settings.moveSpeed;
+    if (isInsideHouse) baseSpeed *= 0.4;
     const speed = canSprint ? baseSpeed * settings.sprintMultiplier : baseSpeed;
-    
+
     const control = grounded ? 1 : settings.airControlMultiplier;
-    const nextX = THREE.MathUtils.lerp(currentVel.x, moveDirection.x * speed * control, grounded ? 1 : delta * 4);
-    const nextZ = THREE.MathUtils.lerp(currentVel.z, moveDirection.z * speed * control, grounded ? 1 : delta * 4);
+    const nextX = THREE.MathUtils.lerp(
+      currentVel.x,
+      moveDirection.x * speed * control,
+      grounded ? 1 : delta * 4
+    );
+    const nextZ = THREE.MathUtils.lerp(
+      currentVel.z,
+      moveDirection.z * speed * control,
+      grounded ? 1 : delta * 4
+    );
     let nextY = currentVel.y;
     if (grounded && !isMoving) nextY = 0;
 
@@ -249,23 +356,31 @@ export default function FPSController({
       if (canSprint) {
         sprintEnergyRef.current = Math.max(0, sprintEnergyRef.current - delta);
       } else {
-        sprintEnergyRef.current = Math.min(settings.maxSprintEnergy, sprintEnergyRef.current + delta * 0.5);
+        sprintEnergyRef.current = Math.min(
+          settings.maxSprintEnergy,
+          sprintEnergyRef.current + delta * 0.5
+        );
       }
       onSprintEnergyChange?.(sprintEnergyRef.current);
     }
 
     // Плавная высота камеры (приседание)
-    const targetH = isCrouched ? settings.crouchCameraHeight : settings.standCameraHeight;
-    visualCameraY.current = THREE.MathUtils.lerp(visualCameraY.current, targetH, delta * settings.crouchTransitionSpeed);
-
-    // --- ПРИМЕНЕНИЕ ПОЗИЦИИ КАМЕРЫ С УЧЕТОМ КАЧАНИЯ ---
-    // Добавляем bobOffset к базовой позиции
-    camera.position.set(
-        pos.x + cameraRight.x * bobOffsetRef.current.x, 
-        pos.y + visualCameraY.current + bobOffsetRef.current.y, 
-        pos.z + cameraRight.z * bobOffsetRef.current.x
+    const targetH = isCrouched
+      ? settings.crouchCameraHeight
+      : settings.standCameraHeight;
+    visualCameraY.current = THREE.MathUtils.lerp(
+      visualCameraY.current,
+      targetH,
+      delta * settings.crouchTransitionSpeed
     );
-    
+
+    // --- ПРИМЕНЕНИЕ ПОЗИЦИИ КАМЕРЫ ---
+    camera.position.set(
+      pos.x + cameraRight.x * bobOffsetRef.current.x,
+      pos.y + visualCameraY.current + bobOffsetRef.current.y,
+      pos.z + cameraRight.z * bobOffsetRef.current.x
+    );
+
     // Физика
     if (!(grounded && !isMoving)) {
       body.setLinvel({ x: nextX, y: nextY, z: nextZ }, true);
@@ -290,12 +405,16 @@ export default function FPSController({
         enabledRotations={[false, false, false]}
         canSleep={false}
         colliders={false}
-        linearDamping={0.5} // Немного уменьшил, так как мы сами управляем скоростью
+        linearDamping={0.5}
       >
         <CapsuleCollider
           args={isCrouched ? settings.crouchCapsule : settings.standCapsule}
-          position={isCrouched ? settings.crouchColliderPosition : settings.standColliderPosition}
-          friction={0} // Оставляем 0 для легкого скольжения при ходьбе мимо стен
+          position={
+            isCrouched
+              ? settings.crouchColliderPosition
+              : settings.standColliderPosition
+          }
+          friction={0}
           restitution={0}
         />
         <CuboidCollider
@@ -307,7 +426,10 @@ export default function FPSController({
             groundedRef.current = true;
           }}
           onIntersectionExit={() => {
-            groundContactsRef.current = Math.max(0, groundContactsRef.current - 1);
+            groundContactsRef.current = Math.max(
+              0,
+              groundContactsRef.current - 1
+            );
             groundedRef.current = groundContactsRef.current > 0;
           }}
         />
