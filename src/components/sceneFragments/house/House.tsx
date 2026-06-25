@@ -1,15 +1,19 @@
 import { useGLTF, useTexture } from "@react-three/drei";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
   BallCollider,
   CuboidCollider,
   CylinderCollider,
   RigidBody,
-  TrimeshCollider,
 } from "@react-three/rapier";
+import Door from "./Doors/Entrance";
 
-export default function House({ onToggleSlowdown }: { onToggleSlowdown: (isInside: boolean) => void }) {
+export default function House({
+  onToggleSlowdown,
+}: {
+  onToggleSlowdown: (isInside: boolean) => void;
+}) {
   const { scene } = useGLTF("/models/houseFinal12-compressed-2.glb");
   const { scene: humanScene } = useGLTF("/models/human.glb");
 
@@ -20,6 +24,37 @@ export default function House({ onToggleSlowdown }: { onToggleSlowdown: (isInsid
 
   textures.brick.wrapS = textures.brick.wrapT = THREE.RepeatWrapping;
 
+  const insideCountRef = useRef(0);
+
+  const enterInside = () => {
+    insideCountRef.current += 1;
+    onToggleSlowdown(true);
+  };
+
+  const exitInside = () => {
+    insideCountRef.current = Math.max(0, insideCountRef.current - 1);
+    if (insideCountRef.current === 0) {
+      onToggleSlowdown(false);
+    }
+  };
+
+  // Извлекаем меш двери напрямую из сцены
+  const doorData = useMemo(() => {
+  let geo: THREE.BufferGeometry | null = null;
+  let mat: THREE.Material | THREE.Material[] | null = null;
+
+  scene.traverse((child) => {
+    if (child.name === "Door_1" && child instanceof THREE.Mesh) {
+      geo = child.geometry.clone();
+      mat = Array.isArray(child.material)
+        ? child.material.map((m) => m.clone())
+        : child.material.clone();
+    }
+  });
+
+  return { geo, mat };
+}, [scene]);
+
   const optimizedHouse = useMemo(() => {
     const root = scene.clone();
 
@@ -29,13 +64,14 @@ export default function House({ onToggleSlowdown }: { onToggleSlowdown: (isInsid
       side: THREE.BackSide,
     });
 
+    let doorAssets = { geometry: null, material: null };
+
     root.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         const mesh = child;
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        console.log(mesh.name);
-        // Оконная рама
+
         if (mesh.name === "Base_01_0002") {
           if (Array.isArray(mesh.material)) {
             mesh.material.forEach((mat) => (mat.side = THREE.FrontSide));
@@ -44,156 +80,93 @@ export default function House({ onToggleSlowdown }: { onToggleSlowdown: (isInsid
           }
         }
 
-        // Шкаф на втором этаже, тумбочка на балконе, полки и стеллаж в гостиной
         if (mesh.name.includes("Cupboard_Upper")) {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
-
-          if (mesh.name === "Cupboard_Upper_01_Door_R_Cupboard_Upper_01_mat_0005_1")
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
+          if (mesh.name === "Cupboard_Upper_01_Door_R_Cupboard_Upper_01_mat_0005_1") {
             mesh.position.y = 2.26;
+          }
         }
 
-        // Лестница на крышу
         if (mesh.name === "Staircase_(lestniza)") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
         }
 
-        // Плитка в ванной
         if (mesh.name === "Plane007_5") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
         }
 
-        // Раковина
         if (mesh.name.includes("defaultMaterial")) {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
           mesh.position.y = 0.25;
         }
 
-        // Зеркало
         if (mesh.name === "mirror") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
           mesh.position.y = 3.9;
         }
 
-        // Унитаз
         if (mesh.name === "Toilet") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
           mesh.scale.y = 0.34;
           mesh.position.y = 2.9;
           mesh.position.x = -0.84;
         }
 
-        // Ванна
         if (mesh.name === "Bath") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
           mesh.scale.y = 0.835;
         }
 
-        // Стол
         if (mesh.name.includes("Cube0")) {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
         }
 
-        // Стулья
         if (mesh.name.includes("Legs_Backside_Chair_and_Rack_")) {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
         }
 
-        // Стол
         if (mesh.name === "Table") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
         }
 
-        // Выключатели
         if (mesh.name.includes("Lamp_Button")) {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
         }
 
-        // Лампa в спальне первая от входа
         if (mesh.name === "lamp2006") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.DoubleSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.DoubleSide;
         }
 
-        // Лампa в спальне вторая от входа
-        if (mesh.name === "lamp2004") {
-          // if (!Array.isArray(mesh.material))
-          // mesh.material.side = THREE.FrontSide;
+        if (mesh.name === "lamp1002" || mesh.name === "lamp1003" || mesh.name === "lamp1001") {
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
         }
 
-        // Лампa в спальне на потолке
-        if (mesh.name === "lamp1002") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
-        }
-
-        // Лампa на втором этаже у лестницы
-        if (mesh.name === "lamp2003") {
-          // if (!Array.isArray(mesh.material))
-          //   mesh.material.side = THREE.FrontSide;
-        }
-
-        // Лампa в санузле
-        if (mesh.name === "lamp1003") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
-        }
-
-        // Лампa в санузле
-        if (mesh.name === "lamp1001") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
-        }
-
-        // Лампа в спальне
-        if (mesh.name === "lamp1001") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
-        }
-
-        // Диван
         if (mesh.name === "Sofa") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
-            mesh.position.z = 0.1;
-            mesh.position.x = -1.89;
-            mesh.position.y = 0.564;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
+          mesh.position.z = 0.1;
+          mesh.position.x = -1.89;
+          mesh.position.y = 0.564;
         }
 
         if (mesh.name === "TV_49Zoll_Black_0") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
           mesh.position.y = 1.6;
         }
 
         if (mesh.name === "TV_49Zoll_Black_0_2") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
           mesh.position.y = 1.60525;
         }
 
         if (mesh.name === "TV_49Zoll_Black_0_1") {
           if (!Array.isArray(mesh.material)) {
-            // mesh.scale.set(5, 5, 5);
             mesh.position.y = 1.291;
             mesh.material.side = THREE.BackSide;
           }
         }
 
-        // Кровать
         if (mesh.name === "Bed") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
           mesh.scale.y = 1;
           mesh.scale.z = 1.1;
           mesh.scale.x = 0.87;
@@ -202,33 +175,12 @@ export default function House({ onToggleSlowdown }: { onToggleSlowdown: (isInsid
           mesh.position.x = 2.54;
         }
 
-        // Кресло
         if (mesh.name === "Armchair") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
           mesh.scale.y = 0.6;
           mesh.position.y = 3.165;
         }
 
-        // Плитнуса
-        if (mesh.name === "Plane007_6") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
-        }
-
-        // Перила на втором этаже
-        if (mesh.name === "Plane007_7") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
-        }
-
-        // Решётки на окнах
-        if (mesh.name === "Plane007_4") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
-        }
-
-        // Ящики на крыше
         if (mesh.name.includes("Box_Wood_")) {
           if (!Array.isArray(mesh.material)) {
             mesh.material.side = THREE.FrontSide;
@@ -236,33 +188,34 @@ export default function House({ onToggleSlowdown }: { onToggleSlowdown: (isInsid
           }
         }
 
-        // Карниз над балконом
         if (mesh.name === "Plane007_8") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.BackSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.BackSide;
         }
 
-        // Двери
-        if (
-          mesh.name === "Door_1" ||
+        // if (
+        //   mesh.name === "Door_1" ||
+        //   mesh.name === "Door_2" ||
+        //   mesh.name === "Door_3" ||
+        //   mesh.name === "Door_4"
+        // ) {
+        //   if (!Array.isArray(mesh.material)) {
+        //     mesh.material.side = THREE.FrontSide;
+        //   }
+        // }
+
+        if (mesh.name === "Door_1" ||
           mesh.name === "Door_2" ||
           mesh.name === "Door_3" ||
-          mesh.name === "Door_4"
-        ) {
-          if (!Array.isArray(mesh.material)) {
-            mesh.material.side = THREE.FrontSide;
-          }
-          // const heightMultiplier = 0.9;
-          // mesh.scale.y = heightMultiplier;
-          // mesh.position.y = 1.06;
+          mesh.name === "Door_4" ||
+          mesh.name === "Door_5") {
+          console.log(mesh)
+          mesh.visible = false;
         }
 
-        // Фасад кирпич
         if (mesh.name === "Plane007_1") {
           mesh.material = sharedBrickMat;
         }
 
-        // Фасад бетон
         if (mesh.name === "Plane007_2") {
           if (!Array.isArray(mesh.material)) {
             mesh.material.map = textures.wall;
@@ -270,30 +223,30 @@ export default function House({ onToggleSlowdown }: { onToggleSlowdown: (isInsid
           }
         }
 
-        // Деревянный пол
         if (mesh.name === "Plane007_3") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
         }
 
-        // Лестница на крышу
         if (mesh.name === "stairToSecondFloor") {
-          if (!Array.isArray(mesh.material))
-            mesh.material.side = THREE.FrontSide;
+          if (!Array.isArray(mesh.material)) mesh.material.side = THREE.FrontSide;
         }
 
-        // Холлодильник
-        if (
-          mesh.name === "Cupboard_Upper_01_Door_R_Cupboard_Upper_01_mat_0005_13"
-        ) {
+        if (mesh.name === "Cupboard_Upper_01_Door_R_Cupboard_Upper_01_mat_0005_13") {
           if (!Array.isArray(mesh.material)) {
+            mesh.material.side = THREE.FrontSide;
           }
-          mesh.material.side = THREE.FrontSide;
           mesh.scale.y = 0.8;
           mesh.position.y = 0.955;
         }
 
-        // mesh.frustumCulled = true;
+        if (child.name === "Door_1") {
+          // Сохраняем ссылки на оригинал
+          doorAssets.geometry = child.geometry;
+          doorAssets.material = child.material;
+          
+          // Скрываем старую дверь в основной модели
+          child.visible = false; 
+        }
       }
     });
 
@@ -302,14 +255,12 @@ export default function House({ onToggleSlowdown }: { onToggleSlowdown: (isInsid
 
   const human = useMemo(() => {
     const root = humanScene.clone();
-
     root.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.castShadow = true;
         child.receiveShadow = true;
       }
     });
-
     return root;
   }, [humanScene]);
 
@@ -320,25 +271,72 @@ export default function House({ onToggleSlowdown }: { onToggleSlowdown: (isInsid
 
   return (
     <group>
-      {/* Зона территории дома (сенсор) */}
+      {/* Входная дверь */}
+      <Door
+        geometry={doorData.geo}
+        material={doorData.mat}
+        position={[-0.375, 1.216, -2.998]}
+        doorScale={[0.941, 1.035, 1.4]}
+        rotation={[0, 0, 0]}
+      />
+
+      {/* Дверь на балконе */}
+      <Door
+        geometry={doorData.geo}
+        material={doorData.mat}
+        position={[-0.335, 3.862, -3.868]}
+        rotation={[0, 0, 0]}
+        doorScale={[0.941, 1.035, 1.4]}
+        colliderArgs={[0.377, 1.035, 0.03]}
+      />
+
+      {/* Дверь в туалет */}
+      <Door
+        geometry={doorData.geo}
+        material={doorData.mat}
+        position={[-0.988, 3.862, -5.16]}
+        rotation={[0, 0, 0]}
+        doorScale={[0.94, 1.035, 1.4]}
+        colliderArgs={[0.377, 1.035, 0.03]}
+      />
+
+      {/* Дверь на кухню */}
+      <Door
+        geometry={doorData.geo}
+        material={doorData.mat}
+        position={[0.72, 1.215, -6.698]}
+        rotation={[0, Math.PI * 1.5, 0]}
+        doorScale={[0.938, 1.035, 1.4]}
+      />
+
+      {/* Дверь в спальню */}
+      <Door
+        geometry={doorData.geo}
+        material={doorData.mat}
+        position={[0.72, 3.86, -4.85]}
+        rotation={[0, Math.PI * 1.5, 0]}
+        doorScale={[0.938, 1.035, 1.4]}
+      />
+
       <CuboidCollider
         sensor
-        args={[4, 5, 3]} // Размеры зоны (подберите под ваш участок)
-        position={[-0.1, 2.5, -4.5]} // Центр дома
-        onIntersectionEnter={() => onToggleSlowdown(true)}
-        onIntersectionExit={() => onToggleSlowdown(false)}
+        args={[4.2, 2.8, 2.8]}
+        position={[-0.1, 1.4, -5]}
+        onIntersectionEnter={enterInside}
+        onIntersectionExit={exitInside}
       />
-      {/* Визуализация зоны (красный бокс) */}
-  <mesh position={[-0.1, 2.5, -4.5]}>
-    {/* boxGeometry использует полные размеры, поэтому умножаем args коллайдера на 2 */}
-    <boxGeometry args={[8, 10, 6]} />
-    <meshBasicMaterial 
-      color="red" 
-      wireframe // Можно оставить только сетку
-      transparent 
-      opacity={0.2} // Или сделать полупрозрачным
-    />
-  </mesh>
+      <CuboidCollider
+        sensor
+        args={[2.2, 2.8, 1.8]}
+        position={[0.6, 4.0, -5.0]}
+        onIntersectionEnter={enterInside}
+        onIntersectionExit={exitInside}
+      />
+      {/* Входная дверь */}
+      {/* <CuboidCollider
+        args={[0.375, 1.03, 0.02]}
+        position={[-0.0015, 1.212, -2.998]}
+      /> */}
       {/* левая часть фасада */}
       <CuboidCollider
         args={[1.21, 2.8, 0.082]}
@@ -920,23 +918,23 @@ export default function House({ onToggleSlowdown }: { onToggleSlowdown: (isInsid
 
       {/* Ящики на крыше */}
       <CuboidCollider 
-        args={[-0.19, 0.65, 0.21]} 
-        position={[-1.49, 5.75, -4.11]}
+        args={[-0.19, 0.23, 0.21]} 
+        position={[-1.49, 6.17, -4.11]}
         rotation={[0,Math.PI * 0.09,0]} 
       />
       <CuboidCollider 
-        args={[-0.19, 0.65, 0.21]} 
-        position={[-1.15, 5.3, -4.15]}
+        args={[-0.19, 0.23, 0.21]} 
+        position={[-1.13, 5.7, -4.15]}
         rotation={[0,Math.PI * 0.52,0]} 
       />
       <CuboidCollider 
-        args={[-0.19, 0.65, 0.21]} 
-        position={[-1.55, 5.3, -4.4]}
+        args={[-0.19, 0.23, 0.21]} 
+        position={[-1.55, 5.7, -4.4]}
         rotation={[0,Math.PI * 0.43,0]} 
       />
       <CuboidCollider 
-        args={[-0.19, 0.65, 0.21]} 
-        position={[-1.54, 5.3, -3.95]}
+        args={[-0.19, 0.23, 0.21]} 
+        position={[-1.54, 5.7, -3.95]}
         rotation={[0,Math.PI * 0.52,0]} 
       />
       
