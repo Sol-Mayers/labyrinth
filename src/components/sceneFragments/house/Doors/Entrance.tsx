@@ -24,8 +24,8 @@ export default function Door({
   rotation = [0, 0, 0],
   doorScale = [1, 1.03, 1.4],
   colliderArgs = [0.375, 1.03, 0.03],
-  triggerArgs = [0.4, 1.1, 0.2],
-  safetyArgs = [0.8, 1.1, 0.8],
+  triggerArgs = [0.4, 1.1, 0.1],
+  safetyArgs = [0.4, 1.1, 0.8],
   hingeOffset = [0.375, 0, 0],
 }: DoorProps) {
   const doorRef = useRef<RapierRigidBody>(null);
@@ -35,7 +35,7 @@ export default function Door({
   const currentAngle = useRef(0);
   const openDirection = useRef(1);
 
-  const openAngle = Math.PI * 0.6;
+  const openAngle = Math.PI * 0.5;
   const closedAngle = 0;
 
   const baseQuat = useMemo(() => {
@@ -64,55 +64,65 @@ export default function Door({
   });
 
   return (
-    <RigidBody
-      ref={doorRef}
-      type="kinematicPosition"
-      colliders={false}
-      position={position}
-      rotation={rotation}
-    >
-      <group position={hingeOffset}>
-        <mesh
-          geometry={geometry!}
-          material={material!}
-          castShadow
-          receiveShadow
-          scale={doorScale}
+    <>
+      <RigidBody
+        ref={doorRef}
+        type="kinematicPosition"
+        colliders={false}
+        position={position}
+        rotation={rotation}
+      >
+        <group position={hingeOffset}>
+          <mesh
+            geometry={geometry!}
+            material={material!}
+            castShadow
+            receiveShadow
+            scale={doorScale}
+          />
+          <CuboidCollider args={colliderArgs} position={[0, 0, 0]} />
+        </group>
+      </RigidBody>
+
+      <RigidBody
+        type="fixed"
+        colliders={false}
+        position={position}
+        rotation={rotation}
+      >
+        <CuboidCollider
+          sensor
+          args={safetyArgs}
+          position={[Math.PI * 0.12, 0.1, 0]}
+          onIntersectionEnter={(e) => {
+            const playerPos = e.other.rigidBody?.translation();
+
+            if (playerPos) {
+              const doorPos = new THREE.Vector3(...position);
+              const player = new THREE.Vector3(playerPos.x, playerPos.y, playerPos.z);
+
+              const localPlayerPos = player
+                .sub(doorPos)
+                .applyQuaternion(baseQuat.clone().invert());
+
+              openDirection.current = localPlayerPos.z >= 0 ? 1 : -1;
+            }
+
+            setIsInSafetyZone(true);
+          }}
+          onIntersectionExit={() => {
+            setIsInSafetyZone(false);
+            setIsOpeningTriggered(false);
+          }}
         />
-        <CuboidCollider args={colliderArgs} position={[0, 0, 0]} />
-      </group>
 
-      <CuboidCollider
-        sensor
-        args={safetyArgs}
-        position={[Math.PI * 0.12, 0.1, 0]}
-        onIntersectionEnter={(e) => {
-          const playerPos = e.other.rigidBody?.translation();
-          if (playerPos) {
-            const doorPos = new THREE.Vector3(...position);
-            const player = new THREE.Vector3(playerPos.x, playerPos.y, playerPos.z);
-
-            const localPlayerPos = player
-              .sub(doorPos)
-              .applyQuaternion(baseQuat.clone().invert());
-
-            openDirection.current = localPlayerPos.z >= 0 ? 1 : -1;
-          }
-
-          setIsInSafetyZone(true);
-        }}
-        onIntersectionExit={() => {
-          setIsInSafetyZone(false);
-          setIsOpeningTriggered(false);
-        }}
-      />
-
-      <CuboidCollider
-        sensor
-        args={triggerArgs}
-        position={[Math.PI * 0.12, 0.1, 0]}
-        onIntersectionEnter={() => setIsOpeningTriggered(true)}
-      />
-    </RigidBody>
+        <CuboidCollider
+          sensor
+          args={triggerArgs}
+          position={[Math.PI * 0.12, 0.1, 0]}
+          onIntersectionEnter={() => setIsOpeningTriggered(true)}
+        />
+      </RigidBody>
+    </>
   );
 }
