@@ -3,7 +3,7 @@ import "./App.css";
 import { Canvas } from "@react-three/fiber";
 import Experience from "./components/Experience";
 import generateLabyrinth, { type Labyrinth } from "./core/generateLabyrinth";
-import { Sky, Stats } from "@react-three/drei";
+import { Stats } from "@react-three/drei";
 import * as THREE from "three";
 import { Physics } from "@react-three/rapier";
 import PlayerStatusHud from "./components/Player/PlayerStatusHUD/PlayerStatusHud";
@@ -18,14 +18,13 @@ const GL_PROPS = {
   depth: true,
 } as const;
 
-const SKY_POSITION: [number, number, number] = [100, 50, 100];
-
 function App() {
   const [labyrinth, setLabyrinth] = useState<Labyrinth>(() =>
     generateLabyrinth(41),
   );
   const [mode, setMode] = useState<"orbit" | "fps">("orbit");
   const [sprintEnergy, setSprintEnergy] = useState(10);
+  const [fade, setFade] = useState(0);
 
   const cameraSettings = useMemo(
     () => ({
@@ -43,6 +42,7 @@ function App() {
         setMode("orbit");
       }
     };
+
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () =>
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
@@ -76,15 +76,6 @@ function App() {
       >
         <Stats />
 
-        {/* <Sky
-          sunPosition={SKY_POSITION}
-          inclination={0.4}
-          azimuth={0.8}
-          distance={500}
-          mieCoefficient={0.005}
-          mieDirectionalG={0.8}
-        /> */}
-
         <Physics gravity={[0, -9.81, 0]} timeStep="vary" interpolate debug>
           <Suspense fallback={null}>
             <Experience
@@ -92,15 +83,28 @@ function App() {
               mode={mode}
               setSprintEnergy={setSprintEnergy}
               patchDensity={0.02}
+              fade={fade}
+              setFade={setFade}
             />
           </Suspense>
         </Physics>
 
-        {/*Антиалиас. Под вопросом! Просадка FPS на 5-10 кадров. */}
         <EffectComposer multisampling={0}>
           <FXAA />
         </EffectComposer>
       </Canvas>
+
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "#000",
+          opacity: fade,
+          transition: "opacity 0.8s ease-in-out",
+          pointerEvents: "none",
+          zIndex: 99999,
+        }}
+      />
 
       <PlayerStatusHud
         sprintEnergy={sprintEnergy}

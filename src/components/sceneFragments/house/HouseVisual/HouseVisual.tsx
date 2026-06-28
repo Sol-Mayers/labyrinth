@@ -225,6 +225,7 @@ export default function HouseVisual() {
         position={[-0.375, 1.216, -2.998]}
         doorScale={[0.941, 1.035, 1.4]}
         rotation={[0, 0, 0]}
+        manual
       />
 
       <Door
@@ -256,8 +257,8 @@ export default function HouseVisual() {
       <Door
         geometry={doorData.geo}
         material={doorData.mat}
-        position={[0.72, 3.86, -4.85]}
-        rotation={[0, Math.PI * 1.5, 0]}
+        position={[0.72, 3.86, -4.1]}
+        rotation={[0, Math.PI * 0.5, 0]}
         doorScale={[0.938, 1.035, 1.4]}
       />
 

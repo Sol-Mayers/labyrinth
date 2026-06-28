@@ -22,6 +22,9 @@ interface FPSControllerProps {
   onSprintEnergyChange?: (value: number) => void;
   onPositionChange?: (pos: THREE.Vector3) => void;
   isInsideHouse?: boolean;
+  movementLocked?: boolean;
+  onRoofMoveRequest?: (action: "up" | "down") => void;
+  roofAction?: "up" | "down" | null;
 }
 
 export default function FPSController({
@@ -32,32 +35,31 @@ export default function FPSController({
   onSprintEnergyChange,
   onPositionChange,
   isInsideHouse = false,
+  movementLocked = false,
+  onRoofMoveRequest,
+  roofAction,
+  position
 }: FPSControllerProps) {
   const { camera } = useThree();
   const rigidRef = useRef<RapierRigidBody | null>(null);
-
   const [isCrouched, setIsCrouched] = useState(false);
   const isCrouchingRef = useRef(false);
-
   const visualCameraY = useRef(0.4);
   const sprintEnergyRef = useRef(10);
   const playerPosRef = useRef(new THREE.Vector3());
-
   const bobTimeRef = useRef(0);
   const bobOffsetRef = useRef(new THREE.Vector2(0, 0));
-
   const groundContactsRef = useRef(0);
   const groundedRef = useRef(false);
 
-  // --- ЗВУКОВАЯ ЛОГИКА ---
   const [soundEnabled, setSoundEnabled] = useState(false);
   const audioRefs = useRef<(THREE.Audio | null)[]>([]);
+  const audioRefsInHouse = useRef<(THREE.Audio | null)[]>([]);
   const audioListenerRef = useRef<THREE.AudioListener | null>(null);
   const audioLoaderRef = useRef(new THREE.AudioLoader());
-  const lastStepTimeRef = useRef(0);
+
   const lastFootstepPhaseRef = useRef<"none" | "left" | "right">("none");
 
-  // Активируем звук по первому клику (требование браузеров)
   useEffect(() => {
     const enable = () => setSoundEnabled(true);
     window.addEventListener("click", enable, { once: true });
@@ -68,12 +70,11 @@ export default function FPSController({
     const listener = new THREE.AudioListener();
     camera.add(listener);
     audioListenerRef.current = listener;
-
     const loader = audioLoaderRef.current;
 
     Array.from({ length: 8 }).forEach((_, i) => {
       const sound = new THREE.Audio(listener);
-      loader.load(`/sound/shag-${i + 1}.wav`, (buffer) => {
+      loader.load(`/sound/player/shag-${i + 1}.wav`, (buffer) => {
         sound.setBuffer(buffer);
         sound.setLoop(false);
         sound.setVolume(0.4);
@@ -81,19 +82,49 @@ export default function FPSController({
       audioRefs.current[i] = sound;
     });
 
+    Array.from({ length: 8 }).forEach((_, i) => {
+      const sound = new THREE.Audio(listener);
+      loader.load(`/sound/player/shag-${i + 1}_inhouse.wav`, (buffer) => {
+        sound.setBuffer(buffer);
+        sound.setLoop(false);
+        sound.setVolume(0.4);
+      });
+      audioRefsInHouse.current[i] = sound;
+    });
+
     return () => {
       camera.remove(listener);
-      audioRefs.current.forEach((sound) => {
+      [...audioRefs.current, ...audioRefsInHouse.current].forEach((sound) => {
         if (sound?.isPlaying) sound.stop();
       });
       audioRefs.current = [];
+      audioRefsInHouse.current = [];
       audioListenerRef.current = null;
     };
   }, [camera]);
 
-  // Функция для проигрывания случайного шага
+  useEffect(() => {
+    const body = rigidRef.current;
+    if (!body || !position) return;
+
+    body.setTranslation(
+      { x: position[0], y: position[1], z: position[2] },
+      true
+    );
+    body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+
+    playerPosRef.current.set(position[0], position[1], position[2]);
+    camera.position.set(
+      position[0],
+      position[1] + visualCameraY.current,
+      position[2]
+    );
+  }, [position, camera]);
+
   const playStepSound = () => {
-    const availableSounds = audioRefs.current.filter(
+    const soundsPool = isInsideHouse ? audioRefsInHouse.current : audioRefs.current;
+    const availableSounds = soundsPool.filter(
       (ref) => ref && ref.buffer && !ref.isPlaying
     );
     if (availableSounds.length === 0) return;
@@ -102,7 +133,6 @@ export default function FPSController({
     const sound = availableSounds[randomIdx];
 
     if (sound) {
-      // Небольшая вариация высоты звука для еще большей реалистичности
       sound.setPlaybackRate(0.9 + Math.random() * 0.2);
       sound.play();
     }
@@ -131,15 +161,11 @@ export default function FPSController({
       crouchColliderPosition: [0, -0.3, 0] as [number, number, number],
       maxSprintEnergy: 10,
       airControlMultiplier: 0.2,
-
-      // тонкий сенсор под ногами
       groundSensorArgs: [0.22, 0.04, 0.22] as [number, number, number],
       groundSensorPosition: [0, -0.84, 0] as [number, number, number],
-
-      // Настройки покачивания
-      bobFrequency: 5, // Частота шагов
-      bobAmountX: 0.03, // Амплитуда влево-вправо
-      bobAmountY: 0.02, // Амплитуда вверх-вниз
+      bobFrequency: 5,
+      bobAmountX: 0.03,
+      bobAmountY: 0.02,
     }),
     []
   );
@@ -163,11 +189,13 @@ export default function FPSController({
       "KeyD",
       "ShiftLeft",
       "ControlLeft",
+      "KeyE",
     ]);
 
     const down = (e: KeyboardEvent) => {
       if (!shouldCaptureKeyboard()) return;
       if (blockedCodes.has(e.code)) e.preventDefault();
+      if (movementLocked) return;
 
       switch (e.code) {
         case "KeyW":
@@ -188,12 +216,14 @@ export default function FPSController({
         case "ControlLeft":
           keys.current.crouchPressed = true;
           break;
+        case "KeyE":
+          if (roofAction) onRoofMoveRequest?.(roofAction);
+          break;
       }
     };
 
     const up = (e: KeyboardEvent) => {
       if (blockedCodes.has(e.code)) e.preventDefault();
-
       switch (e.code) {
         case "KeyW":
           keys.current.forward = false;
@@ -231,7 +261,7 @@ export default function FPSController({
       document.removeEventListener("keyup", up);
       window.removeEventListener("blur", resetKeys);
     };
-  }, []);
+  }, [movementLocked, roofAction, onRoofMoveRequest]);
 
   useFrame((state, delta) => {
     const body = rigidRef.current;
@@ -249,43 +279,33 @@ export default function FPSController({
     const xInput = Number(keys.current.right) - Number(keys.current.left);
     const zInput = Number(keys.current.forward) - Number(keys.current.backward);
 
-    moveDirection
-      .set(0, 0, 0)
-      .addScaledVector(cameraForward, zInput)
-      .addScaledVector(cameraRight, xInput);
+    moveDirection.set(0, 0, 0).addScaledVector(cameraForward, zInput).addScaledVector(cameraRight, xInput);
 
     const isMoving = moveDirection.lengthSq() > 0.01;
     if (moveDirection.lengthSq() > 1) moveDirection.normalize();
 
-    // --- ЛОГИКА КАЧАНИЯ ГОЛОВЫ ---
+    if (movementLocked) {
+      body.setGravityScale(0, true);
+      body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      camera.position.set(pos.x, pos.y + visualCameraY.current, pos.z);
+      return;
+    }
+
     if (grounded && isMoving) {
-      const currentSpeed = new THREE.Vector3(
-        currentVel.x,
-        0,
-        currentVel.z
-      ).length();
-
+      const currentSpeed = new THREE.Vector3(currentVel.x, 0, currentVel.z).length();
       const speedMultiplier = isInsideHouse ? 1.7 : 1.0;
-
-      const bobSpeed = THREE.MathUtils.clamp(
-        currentSpeed * settings.bobFrequency * speedMultiplier,
-        10.0,
-        30.0
-      );
-
+      const bobSpeed = THREE.MathUtils.clamp(currentSpeed * settings.bobFrequency * speedMultiplier, 10.0, 30.0);
       bobTimeRef.current += delta * bobSpeed;
-
       const bobX = Math.sin(bobTimeRef.current * 0.5) * settings.bobAmountX;
       const bobY = Math.sin(bobTimeRef.current) * settings.bobAmountY;
-
       bobOffsetRef.current.x = bobX;
       bobOffsetRef.current.y = bobY;
 
       const isBottom = bobY < -settings.bobAmountY * 0.75;
       const isLeft = bobX < 0;
       const isRight = bobX > 0;
-
       let currentPhase: "none" | "left" | "right" = "none";
+
       if (isBottom && isLeft) currentPhase = "left";
       if (isBottom && isRight) currentPhase = "right";
 
@@ -298,26 +318,16 @@ export default function FPSController({
         lastFootstepPhaseRef.current = "none";
       }
     } else {
-      bobOffsetRef.current.x = THREE.MathUtils.lerp(
-        bobOffsetRef.current.x,
-        0,
-        delta * 5
-      );
-      bobOffsetRef.current.y = THREE.MathUtils.lerp(
-        bobOffsetRef.current.y,
-        0,
-        delta * 5
-      );
+      bobOffsetRef.current.x = THREE.MathUtils.lerp(bobOffsetRef.current.x, 0, delta * 5);
+      bobOffsetRef.current.y = THREE.MathUtils.lerp(bobOffsetRef.current.y, 0, delta * 5);
       lastFootstepPhaseRef.current = "none";
     }
 
-    // Состояние приседания
     if (grounded && isCrouchingRef.current !== keys.current.crouchPressed) {
       isCrouchingRef.current = keys.current.crouchPressed;
       setIsCrouched(keys.current.crouchPressed);
     }
 
-    // Гравитация и остановка
     if (grounded && !isMoving) {
       body.setGravityScale(0, true);
       body.setLinvel({ x: 0, y: 0, z: 0 }, true);
@@ -331,13 +341,12 @@ export default function FPSController({
       keys.current.shiftPressed &&
       sprintEnergyRef.current > 0 &&
       isMoving;
-    let baseSpeed = isCrouchingRef.current
-      ? settings.crouchSpeed
-      : settings.moveSpeed;
+
+    let baseSpeed = isCrouchingRef.current ? settings.crouchSpeed : settings.moveSpeed;
     if (isInsideHouse) baseSpeed *= 0.4;
     const speed = canSprint ? baseSpeed * settings.sprintMultiplier : baseSpeed;
-
     const control = grounded ? 1 : settings.airControlMultiplier;
+
     const nextX = THREE.MathUtils.lerp(
       currentVel.x,
       moveDirection.x * speed * control,
@@ -348,10 +357,10 @@ export default function FPSController({
       moveDirection.z * speed * control,
       grounded ? 1 : delta * 4
     );
+
     let nextY = currentVel.y;
     if (grounded && !isMoving) nextY = 0;
 
-    // Энергия
     if (grounded) {
       if (canSprint) {
         sprintEnergyRef.current = Math.max(0, sprintEnergyRef.current - delta);
@@ -364,24 +373,19 @@ export default function FPSController({
       onSprintEnergyChange?.(sprintEnergyRef.current);
     }
 
-    // Плавная высота камеры (приседание)
-    const targetH = isCrouched
-      ? settings.crouchCameraHeight
-      : settings.standCameraHeight;
+    const targetH = isCrouched ? settings.crouchCameraHeight : settings.standCameraHeight;
     visualCameraY.current = THREE.MathUtils.lerp(
       visualCameraY.current,
       targetH,
       delta * settings.crouchTransitionSpeed
     );
 
-    // --- ПРИМЕНЕНИЕ ПОЗИЦИИ КАМЕРЫ ---
     camera.position.set(
       pos.x + cameraRight.x * bobOffsetRef.current.x,
       pos.y + visualCameraY.current + bobOffsetRef.current.y,
       pos.z + cameraRight.z * bobOffsetRef.current.x
     );
 
-    // Физика
     if (!(grounded && !isMoving)) {
       body.setLinvel({ x: nextX, y: nextY, z: nextZ }, true);
     }
@@ -409,11 +413,7 @@ export default function FPSController({
       >
         <CapsuleCollider
           args={isCrouched ? settings.crouchCapsule : settings.standCapsule}
-          position={
-            isCrouched
-              ? settings.crouchColliderPosition
-              : settings.standColliderPosition
-          }
+          position={isCrouched ? settings.crouchColliderPosition : settings.standColliderPosition}
           friction={0}
           restitution={0}
         />
@@ -426,10 +426,7 @@ export default function FPSController({
             groundedRef.current = true;
           }}
           onIntersectionExit={() => {
-            groundContactsRef.current = Math.max(
-              0,
-              groundContactsRef.current - 1
-            );
+            groundContactsRef.current = Math.max(0, groundContactsRef.current - 1);
             groundedRef.current = groundContactsRef.current > 0;
           }}
         />

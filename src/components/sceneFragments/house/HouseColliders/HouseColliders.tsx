@@ -7,10 +7,16 @@ import { useRef } from "react";
 
 export default function HouseColliders({
   onToggleSlowdown,
+  onRoofActionChange,
+  onRoofMoveRequest,
 }: {
   onToggleSlowdown: (isInside: boolean) => void;
+  onRoofActionChange?: (action: "up" | "down" | null) => void;
+  onRoofMoveRequest?: (action: "up" | "down") => void;
 }) {
   const insideCountRef = useRef(0);
+  const nearRoofUpRef = useRef(0);
+  const nearRoofDownRef = useRef(0);
 
   const enterInside = () => {
     insideCountRef.current += 1;
@@ -24,19 +30,57 @@ export default function HouseColliders({
     }
   };
 
+  const enterRoofUp = () => {
+    nearRoofUpRef.current += 1;
+    onRoofActionChange?.("up");
+  };
+
+  const exitRoofUp = () => {
+    nearRoofUpRef.current = Math.max(0, nearRoofUpRef.current - 1);
+    if (nearRoofUpRef.current === 0) {
+      onRoofActionChange?.(null);
+    }
+  };
+
+  const enterRoofDown = () => {
+    nearRoofDownRef.current += 1;
+    onRoofActionChange?.("down");
+  };
+
+  const exitRoofDown = () => {
+    nearRoofDownRef.current = Math.max(0, nearRoofDownRef.current - 1);
+    if (nearRoofDownRef.current === 0) {
+      onRoofActionChange?.(null);
+    }
+  };
+
   return (
     <>
       <CuboidCollider
         sensor
-        args={[4.2, 2.8, 2.8]}
-        position={[-0.1, 1.4, -5]}
+        args={[0.2, 1.2, 0.4]}
+        position={[-1.42, 4, -6.37]}
+        onIntersectionEnter={enterRoofUp}
+        onIntersectionExit={exitRoofUp}
+      />
+      <CuboidCollider
+        sensor
+        args={[0.4, 0.8, 0.35]}
+        position={[-1.6, 6.25, -6.3]}
+        onIntersectionEnter={enterRoofDown}
+        onIntersectionExit={exitRoofDown}
+      />
+      <CuboidCollider
+        sensor
+        args={[3.4, 5, 2.1]}
+        position={[-0.04, 1.4, -5]}
         onIntersectionEnter={enterInside}
         onIntersectionExit={exitInside}
       />
       <CuboidCollider
         sensor
-        args={[2.2, 2.8, 1.8]}
-        position={[0.6, 4.0, -5.0]}
+        args={[1.2, 1.2, 0.7]}
+        position={[0.05, 3.9, -2.8]}
         onIntersectionEnter={enterInside}
         onIntersectionExit={exitInside}
       />
@@ -368,7 +412,7 @@ export default function HouseColliders({
         args={[0.45, 0.1, 0.14]}
         position={[-2.423, 0.781, -3.5]}
         rotation={[0, Math.PI * 0.5, 0]}
-      /> 
+      />
       <CuboidCollider
         args={[0.45, 0.1, 0.42]}
         position={[-2.904, 0.957, -3.5]}
@@ -594,58 +638,58 @@ export default function HouseColliders({
       <CuboidCollider args={[0.25, 0.4, 0.6]} position={[1.555, 0.5, -4.06]} />
 
       {/* Кухня левый стул */}
-      <CuboidCollider 
-        args={[0.14, 0.5, 0.11]} 
+      <CuboidCollider
+        args={[0.14, 0.5, 0.11]}
         position={[2.08, 0.6, -3.47]}
-        rotation={[0,Math.PI * 0.48,0]} 
+        rotation={[0, Math.PI * 0.48, 0]}
       />
       {/* Кухня правый стул */}
-      <CuboidCollider 
-        args={[0.14, 0.5, 0.11]} 
+      <CuboidCollider
+        args={[0.14, 0.5, 0.11]}
         position={[1.1, 0.6, -3.98]}
-        rotation={[0,Math.PI * 0.18,0]} 
+        rotation={[0, Math.PI * 0.18, 0]}
       />
       {/* Спальня стул */}
-      <CuboidCollider 
-        args={[0.26, 0.65, 0.23]} 
+      <CuboidCollider
+        args={[0.26, 0.65, 0.23]}
         position={[2.7, 3.45, -3.6]}
-        rotation={[0,Math.PI * 0.34,0]} 
+        rotation={[0, Math.PI * 0.34, 0]}
       />
       {/* Балкон стул */}
-      <CuboidCollider 
-        args={[0.14, 0.5, 0.11]} 
+      <CuboidCollider
+        args={[0.14, 0.5, 0.11]}
         position={[-0.73, 3.3, -3.27]}
-        rotation={[0,Math.PI * 0.73,0]} 
+        rotation={[0, Math.PI * 0.73, 0]}
       />
       {/* Балкон тумбочка */}
-      <CuboidCollider 
-        args={[0.16, 0.3, 0.14]} 
+      <CuboidCollider
+        args={[0.16, 0.3, 0.14]}
         position={[0.88, 3, -3.5]}
-        rotation={[0,Math.PI * 0.5,0]} 
+        rotation={[0, Math.PI * 0.5, 0]}
       />
 
       {/* Ящики на крыше */}
-      <CuboidCollider 
-        args={[0.19, 0.23, 0.21]} 
+      <CuboidCollider
+        args={[0.19, 0.23, 0.21]}
         position={[-1.49, 6.17, -4.11]}
-        rotation={[0,Math.PI * 0.09,0]} 
+        rotation={[0, Math.PI * 0.09, 0]}
       />
-      <CuboidCollider 
-        args={[0.19, 0.23, 0.21]} 
+      <CuboidCollider
+        args={[0.19, 0.23, 0.21]}
         position={[-1.13, 5.7, -4.15]}
-        rotation={[0,Math.PI * 0.52,0]} 
+        rotation={[0, Math.PI * 0.52, 0]}
       />
-      <CuboidCollider 
-        args={[0.19, 0.23, 0.21]} 
+      <CuboidCollider
+        args={[0.19, 0.23, 0.21]}
         position={[-1.55, 5.7, -4.4]}
-        rotation={[0,Math.PI * 0.43,0]} 
+        rotation={[0, Math.PI * 0.43, 0]}
       />
-      <CuboidCollider 
-        args={[0.19, 0.23, 0.21]} 
+      <CuboidCollider
+        args={[0.19, 0.23, 0.21]}
         position={[-1.54, 5.7, -3.95]}
-        rotation={[0,Math.PI * 0.52,0]} 
+        rotation={[0, Math.PI * 0.52, 0]}
       />
-      
+
       {/* Заглушка для щёлки на двери в санузел */}
       <mesh castShadow receiveShadow position={[-0.15, 3.9, -5.165]}>
         <boxGeometry args={[0.1, 2.2, 0.164]} />
