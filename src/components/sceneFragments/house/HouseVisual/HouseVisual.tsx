@@ -222,7 +222,7 @@ export default function HouseVisual() {
       <Door
         geometry={doorData.geo}
         material={doorData.mat}
-        position={[-0.375, 1.216, -2.998]}
+        position={[-0.352, 1.216, -2.998]}
         doorScale={[0.941, 1.035, 1.4]}
         rotation={[0, 0, 0]}
         manual
@@ -231,7 +231,7 @@ export default function HouseVisual() {
       <Door
         geometry={doorData.geo}
         material={doorData.mat}
-        position={[-0.335, 3.862, -3.868]}
+        position={[-0.313, 3.862, -3.868]}
         rotation={[0, 0, 0]}
         doorScale={[0.941, 1.035, 1.4]}
         colliderArgs={[0.377, 1.035, 0.03]}
@@ -240,7 +240,7 @@ export default function HouseVisual() {
       <Door
         geometry={doorData.geo}
         material={doorData.mat}
-        position={[-0.988, 3.862, -5.16]}
+        position={[-0.965, 3.862, -5.16]}
         rotation={[0, 0, 0]}
         doorScale={[0.94, 1.035, 1.4]}
         colliderArgs={[0.377, 1.035, 0.03]}
@@ -249,7 +249,7 @@ export default function HouseVisual() {
       <Door
         geometry={doorData.geo}
         material={doorData.mat}
-        position={[0.72, 1.215, -6.698]}
+        position={[0.72, 1.215, -6.675]}
         rotation={[0, Math.PI * 1.5, 0]}
         doorScale={[0.938, 1.035, 1.4]}
       />
@@ -257,7 +257,7 @@ export default function HouseVisual() {
       <Door
         geometry={doorData.geo}
         material={doorData.mat}
-        position={[0.72, 3.86, -4.1]}
+        position={[0.72, 3.86, -4.124]}
         rotation={[0, Math.PI * 0.5, 0]}
         doorScale={[0.938, 1.035, 1.4]}
       />
